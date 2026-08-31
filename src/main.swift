@@ -9,6 +9,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Dynamic status items for each selected app with notifications
     var appStatusItems: [String: NSStatusItem] = [:]
     
+    // Cache of resolved app URLs
+    var appURLs: [String: URL] = [:]
+    
     // Simulation state
     var isSimulatingMulti = false
     
@@ -146,11 +149,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         for appTitle in currentlySelected {
             if let dockApp = dockAppMap[appTitle] {
                 individualAppsToShow.append(dockApp)
+                if let url = dockApp.appURL {
+                    appURLs[appTitle] = url
+                }
             } else {
                 // If not currently running/in dock, try to resolve its URL for the icon
-                var appURL: URL? = nil
-                if let path = NSWorkspace.shared.fullPath(forApplication: appTitle) {
-                    appURL = URL(fileURLWithPath: path)
+                var appURL = appURLs[appTitle]
+                if appURL == nil {
+                    if let path = NSWorkspace.shared.fullPath(forApplication: appTitle) {
+                        appURL = URL(fileURLWithPath: path)
+                    }
+                }
+                if let url = appURL {
+                    appURLs[appTitle] = url
                 }
                 individualAppsToShow.append(AppBadgeInfo(title: appTitle, bundleId: nil, badgeValue: nil, appURL: appURL))
             }
@@ -158,6 +169,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Consolidated count is for non-selected apps only
         for app in dockApps {
+            if let url = app.appURL {
+                appURLs[app.title] = url
+            }
             if !currentlySelected.contains(app.title) {
                 if let val = app.badgeValue, !val.isEmpty {
                     let count = Int(val) ?? 1
@@ -242,8 +256,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let appTitle = sender.toolTip else { return }
         
         let runningApps = NSWorkspace.shared.runningApplications
-        if let targetApp = runningApps.first(where: { $0.localizedName == appTitle }) {
+        if let targetApp = runningApps.first(where: { 
+            $0.localizedName?.localizedCaseInsensitiveCompare(appTitle) == .orderedSame ||
+            $0.bundleURL?.deletingPathExtension().lastPathComponent.localizedCaseInsensitiveCompare(appTitle) == .orderedSame
+        }) {
             targetApp.activate(options: [.activateIgnoringOtherApps])
+        } else if let appURL = appURLs[appTitle] {
+            NSWorkspace.shared.open(appURL)
         } else {
             NSWorkspace.shared.launchApplication(appTitle)
         }
