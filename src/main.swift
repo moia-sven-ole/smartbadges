@@ -136,18 +136,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         var logContent = "--- Update Cycle \(Date()) ---\n"
         logContent += "Selected Apps: \(currentlySelected)\n"
         
+        // Map dock apps by title for easy lookup
+        var dockAppMap: [String: AppBadgeInfo] = [:]
         for app in dockApps {
-            guard let val = app.badgeValue, !val.isEmpty else { continue }
-            let count = Int(val) ?? 1
-            
-            if currentlySelected.contains(app.title) {
-                individualAppsToShow.append(app)
+            dockAppMap[app.title] = app
+        }
+        
+        // Always include selected apps as individual items to keep their icons in the menu bar
+        for appTitle in currentlySelected {
+            if let dockApp = dockAppMap[appTitle] {
+                individualAppsToShow.append(dockApp)
             } else {
-                consolidatedCount += count
+                // If not currently running/in dock, try to resolve its URL for the icon
+                var appURL: URL? = nil
+                if let path = NSWorkspace.shared.fullPath(forApplication: appTitle) {
+                    appURL = URL(fileURLWithPath: path)
+                }
+                individualAppsToShow.append(AppBadgeInfo(title: appTitle, bundleId: nil, badgeValue: nil, appURL: appURL))
             }
         }
         
-        // Remove individual items no longer active
+        // Consolidated count is for non-selected apps only
+        for app in dockApps {
+            if !currentlySelected.contains(app.title) {
+                if let val = app.badgeValue, !val.isEmpty {
+                    let count = Int(val) ?? 1
+                    consolidatedCount += count
+                }
+            }
+        }
+        
+        // Remove individual items no longer active (i.e. deselected by the user)
         let activeIndividualTitles = Set(individualAppsToShow.map { $0.title })
         let titlesToRemove = appStatusItems.keys.filter { !activeIndividualTitles.contains($0) }
         for title in titlesToRemove {
@@ -182,16 +201,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 
                 if let icon = appIcon, icon.size.width > 0, icon.size.height > 0 {
                     button.image = icon.resized(to: NSSize(width: 16, height: 16))
-                    button.imagePosition = .imageLeading
                     let frameStr = button.window.map { "\($0.frame)" } ?? "nil"
                     logContent += "  Set Icon for \(title) at frame \(frameStr)\n"
                 }
                 
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .foregroundColor: NSColor.systemRed,
-                    .font: NSFont.boldSystemFont(ofSize: 12)
-                ]
-                button.attributedTitle = NSAttributedString(string: badgeVal, attributes: attrs)
+                if !badgeVal.isEmpty {
+                    let attrs: [NSAttributedString.Key: Any] = [
+                        .foregroundColor: NSColor.systemRed,
+                        .font: NSFont.boldSystemFont(ofSize: 12)
+                    ]
+                    button.attributedTitle = NSAttributedString(string: badgeVal, attributes: attrs)
+                    button.imagePosition = .imageLeading
+                } else {
+                    button.attributedTitle = NSAttributedString(string: "")
+                    button.title = ""
+                    button.imagePosition = .imageOnly
+                }
             }
         }
         
