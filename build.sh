@@ -73,7 +73,10 @@ EOF
 
     openssl req -x509 -config codesign.cnf -days 3650 -out codesign_cert.pem -keyout codesign_key.pem -newkey rsa:2048 -nodes > /dev/null 2>&1
     openssl pkcs12 -export -out codesign_identity.p12 -inkey codesign_key.pem -in codesign_cert.pem -passout pass:1234 > /dev/null 2>&1
-    security import codesign_identity.p12 -k ~/Library/Keychains/login.keychain-db -P "1234" > /dev/null 2>&1
+    # Target default login keychain robustly across macOS versions
+    KEYCHAIN="$(security default-keychain | tr -d '"' | xargs)"
+    [ -z "$KEYCHAIN" ] && KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
+    security import codesign_identity.p12 -k "$KEYCHAIN" -P "1234" -A -T /usr/bin/codesign > /dev/null 2>&1
     rm codesign.cnf codesign_cert.pem codesign_key.pem codesign_identity.p12
 fi
 

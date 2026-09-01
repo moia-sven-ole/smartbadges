@@ -22,9 +22,8 @@
     <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
-    <!-- Temporarily set LSUIElement to false so it shows in Dock for simulation testing -->
     <key>LSUIElement</key>
-    <false/>
+    <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>

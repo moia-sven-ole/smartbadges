@@ -226,7 +226,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if let button = item.button {
                 button.target = self
                 button.action = #selector(appStatusItemClicked(_:))
+                button.sendAction(on: [.leftMouseUp, .rightMouseUp])
                 button.toolTip = title
+                
+                let contextMenu = NSMenu()
+                let openItem = NSMenuItem(title: "Open \(title)", action: #selector(openAppFromMenuItem(_:)), keyEquivalent: "")
+                openItem.target = self
+                openItem.representedObject = title
+                contextMenu.addItem(openItem)
+                
+                let deselectItem = NSMenuItem(title: "Hide \(title) Icon", action: #selector(deselectAppFromMenuItem(_:)), keyEquivalent: "")
+                deselectItem.target = self
+                deselectItem.representedObject = title
+                contextMenu.addItem(deselectItem)
+                
+                contextMenu.addItem(NSMenuItem.separator())
+                contextMenu.addItem(NSMenuItem(title: "Quit SmartBadges", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+                
+                // Do not assign item.menu directly to allow left-click custom action; menu pops on right-click
+                item.menu = nil
                 
                 var appIcon: NSImage?
                 if let appURL = appInfo.appURL {
@@ -272,6 +290,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         try? logContent.write(toFile: "/Users/sven-ole.fedders/scripts/smartbadges/debug.log", atomically: true, encoding: .utf8)
     }
 
+    @objc func openAppFromMenuItem(_ sender: NSMenuItem) {
+        guard let title = sender.representedObject as? String else { return }
+        let url = appURLs[title]
+        let bundleId = appBundleIds[title]
+        AccessibilityHelper.activateApp(title: title, bundleId: bundleId, appURL: url)
+    }
+
+    @objc func deselectAppFromMenuItem(_ sender: NSMenuItem) {
+        guard let title = sender.representedObject as? String else { return }
+        var current = selectedApps
+        current.remove(title)
+        selectedApps = current
+        updateBadges()
+    }
+
     @objc func appStatusItemClicked(_ sender: NSStatusBarButton) {
         var appTitle = sender.toolTip
         if appTitle == nil || appTitle?.isEmpty == true {
@@ -280,6 +313,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         guard let title = appTitle, !title.isEmpty else { return }
+        
+        let event = NSApp.currentEvent
+        if event?.type == .rightMouseUp {
+            let contextMenu = NSMenu()
+            let openItem = NSMenuItem(title: "Open \(title)", action: #selector(openAppFromMenuItem(_:)), keyEquivalent: "")
+            openItem.target = self
+            openItem.representedObject = title
+            contextMenu.addItem(openItem)
+            
+            let deselectItem = NSMenuItem(title: "Hide \(title) Icon", action: #selector(deselectAppFromMenuItem(_:)), keyEquivalent: "")
+            deselectItem.target = self
+            deselectItem.representedObject = title
+            contextMenu.addItem(deselectItem)
+            
+            contextMenu.addItem(NSMenuItem.separator())
+            contextMenu.addItem(NSMenuItem(title: "Quit SmartBadges", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+            
+            if let ev = event {
+                NSMenu.popUpContextMenu(contextMenu, with: ev, for: sender)
+            }
+            return
+        }
         
         let url = appURLs[title]
         let bundleId = appBundleIds[title]
