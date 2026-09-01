@@ -9,8 +9,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Dynamic status items for each selected app with notifications
     var appStatusItems: [String: NSStatusItem] = [:]
     
-    // Cache of resolved app URLs
+    // Cache of resolved app URLs and bundle IDs
     var appURLs: [String: URL] = [:]
+    var appBundleIds: [String: String] = [:]
     
     // Simulation state
     var isSimulatingMulti = false
@@ -152,18 +153,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if let url = dockApp.appURL {
                     appURLs[appTitle] = url
                 }
+                if let bId = dockApp.bundleId {
+                    appBundleIds[appTitle] = bId
+                }
             } else {
                 // If not currently running/in dock, try to resolve its URL for the icon
                 var appURL = appURLs[appTitle]
                 if appURL == nil {
-                    if let path = NSWorkspace.shared.fullPath(forApplication: appTitle) {
-                        appURL = URL(fileURLWithPath: path)
+                    let candidatePaths = [
+                        "/Applications/\(appTitle).app",
+                        "/System/Applications/\(appTitle).app",
+                        "/System/Applications/Utilities/\(appTitle).app",
+                        "\(NSHomeDirectory())/Applications/\(appTitle).app"
+                    ]
+                    for path in candidatePaths {
+                        if FileManager.default.fileExists(atPath: path) {
+                            appURL = URL(fileURLWithPath: path)
+                            break
+                        }
                     }
                 }
                 if let url = appURL {
                     appURLs[appTitle] = url
                 }
-                individualAppsToShow.append(AppBadgeInfo(title: appTitle, bundleId: nil, badgeValue: nil, appURL: appURL))
+                let bundleId = appURL.flatMap { Bundle(url: $0)?.bundleIdentifier } ?? appBundleIds[appTitle]
+                if let bId = bundleId {
+                    appBundleIds[appTitle] = bId
+                }
+                individualAppsToShow.append(AppBadgeInfo(title: appTitle, bundleId: bundleId, badgeValue: nil, appURL: appURL))
             }
         }
         
@@ -171,6 +188,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         for app in dockApps {
             if let url = app.appURL {
                 appURLs[app.title] = url
+            }
+            if let bId = app.bundleId {
+                appBundleIds[app.title] = bId
             }
             if !currentlySelected.contains(app.title) {
                 if let val = app.badgeValue, !val.isEmpty {
@@ -253,19 +273,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func appStatusItemClicked(_ sender: NSStatusBarButton) {
-        guard let appTitle = sender.toolTip else { return }
-        
-        let runningApps = NSWorkspace.shared.runningApplications
-        if let targetApp = runningApps.first(where: { 
-            $0.localizedName?.localizedCaseInsensitiveCompare(appTitle) == .orderedSame ||
-            $0.bundleURL?.deletingPathExtension().lastPathComponent.localizedCaseInsensitiveCompare(appTitle) == .orderedSame
-        }) {
-            targetApp.activate(options: [.activateIgnoringOtherApps])
-        } else if let appURL = appURLs[appTitle] {
-            NSWorkspace.shared.open(appURL)
-        } else {
-            NSWorkspace.shared.launchApplication(appTitle)
+        var appTitle = sender.toolTip
+        if appTitle == nil || appTitle?.isEmpty == true {
+            if let match = appStatusItems.first(where: { $0.value.button == sender }) {
+                appTitle = match.key
+            }
         }
+        guard let title = appTitle, !title.isEmpty else { return }
+        
+        let url = appURLs[title]
+        let bundleId = appBundleIds[title]
+        AccessibilityHelper.activateApp(title: title, bundleId: bundleId, appURL: url)
     }
 }
 
